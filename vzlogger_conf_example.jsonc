@@ -1,0 +1,29 @@
+{
+    "enabled": true, // disabled meters will be ignored
+    "allowskip": false, // if enabled, errors when opening meter will lead to meter being ignored
+    "protocol": "exec",
+    "command": "/usr/local/bin/python3 /home/pi/BosswerkInverter/InverterData.py", // is the command line as you'll type it in the shell - remember to test your command from the root directory
+    "format": "$i $v", // a format string for parsing complex logfiles
+    // arbitrary text and whitespaces are allowed, see 'scanf()'
+    // at least $v has to be used
+    // $i => identifier, $v => value, $t => timestamp
+    "interval": 15,
+    "channels": [
+        {
+            "identifier": "powerac",
+            "uuid": "<replace with your uuid>"
+        },
+        {
+            "identifier": "powerdc1",
+            "uuid": "<replace with your uuid>"
+        },
+        {
+            "identifier": "powerdc2",
+            "uuid": "<replace with your uuid>"
+        },
+        {
+            "identifier": "temp",
+            "uuid": "<replace with your uuid>"
+        }
+    ]
+}

@@ -1,143 +1,176 @@
-import sys
 import socket
-import binascii
-import re
+import struct
 import libscrc
 import json
-import paho.mqtt.client as paho
+import sys
 import os
 import configparser
-
-def twosComplement_hex(hexval):
-    bits = 16
-    val = int(hexval, bits)
-    if val & (1 << (bits-1)):
-        val -= 1 << bits
-    return val
+from binascii import *
 
 os.chdir(os.path.dirname(sys.argv[0]))
-# CONFIG
 
+# Read config
 configParser = configparser.RawConfigParser()
 configFilePath = r'./config.cfg'
 configParser.read(configFilePath)
 
-inverter_ip=configParser.get('DeyeInverter', 'inverter_ip')
-inverter_port=int(configParser.get('DeyeInverter', 'inverter_port'))
-inverter_sn=int(configParser.get('DeyeInverter', 'inverter_sn'))
-mqtt=int(configParser.get('DeyeInverter', 'mqtt'))
-mqtt_server=configParser.get('DeyeInverter', 'mqtt_server')
-mqtt_port=int(configParser.get('DeyeInverter', 'mqtt_port'))
-mqtt_topic=configParser.get('DeyeInverter', 'mqtt_topic')
-mqtt_username=configParser.get('DeyeInverter', 'mqtt_username')
-mqtt_passwd=configParser.get('DeyeInverter', 'mqtt_passwd')
+logger_ip = configParser.get('BosswerkInverter', 'logger_ip')
+logger_port = int(configParser.get('BosswerkInverter', 'logger_port'))
+# format like 40xxxxxxxx
+logger_sn = int(configParser.get('BosswerkInverter', 'logger_sn'))
+# 1 - parse message to json, 0 - output power / temp only
+output_to_json = int(configParser.get('BosswerkInverter', 'output_to_json'))
+# output additional message details
+msg_details_output = int(configParser.get(
+    'BosswerkInverter', 'msg_details_output'))
 
+# Read register map
+jsonmap = './DYRealTime.json'
+with open(jsonmap) as txtfile:
+    parameters = json.loads(txtfile.read())
 
-# END CONFIG
-
-
-# PREPARE & SEND DATA TO THE INVERTER
-output="{" # initialise json output
-pini=59
-pfin=112
-chunks=0
-while chunks<2:
- if chunks==-1: # testing initialisation
-  pini=235
-  pfin=235
-  print("Initialise Connection")
- start = binascii.unhexlify('A5') #start
- length=binascii.unhexlify('1700') # datalength
- controlcode= binascii.unhexlify('1045') #controlCode
- serial=binascii.unhexlify('0000') # serial
- datafield = binascii.unhexlify('020000000000000000000000000000') #com.igen.localmode.dy.instruction.send.SendDataField
- pos_ini=str(hex(pini)[2:4].zfill(4))
- pos_fin=str(hex(pfin-pini+1)[2:4].zfill(4))
- businessfield= binascii.unhexlify('0103' + pos_ini + pos_fin) # sin CRC16MODBUS
- crc=binascii.unhexlify(str(hex(libscrc.modbus(businessfield))[4:6])+str(hex(libscrc.modbus(businessfield))[2:4])) # CRC16modbus
- checksum=binascii.unhexlify('00') #checksum F2
- endCode = binascii.unhexlify('15')
- 
- inverter_sn2 = bytearray.fromhex(hex(inverter_sn)[8:10] + hex(inverter_sn)[6:8] + hex(inverter_sn)[4:6] + hex(inverter_sn)[2:4])
- frame = bytearray(start + length + controlcode + serial + inverter_sn2 + datafield + businessfield + crc + checksum + endCode)
- 
- checksum = 0
- frame_bytes = bytearray(frame)
- for i in range(1, len(frame_bytes) - 2, 1):
-     checksum += frame_bytes[i] & 255
- frame_bytes[len(frame_bytes) - 2] = int((checksum & 255))
- 
- # OPEN SOCKET
- 
- for res in socket.getaddrinfo(inverter_ip, inverter_port, socket.AF_INET,
-                                            socket.SOCK_STREAM):
-                  family, socktype, proto, canonname, sockadress = res
-                  try:
-                   clientSocket= socket.socket(family,socktype,proto);
-                   clientSocket.settimeout(10);
-                   clientSocket.connect(sockadress);
-                  except socket.error as msg:
-                   print("Could not open socket");
-                   break
- 
- # SEND DATA
- #print(chunks)
- clientSocket.sendall(frame_bytes);
- 
- ok=False;
- while (not ok):
-  try:
-   data = clientSocket.recv(1024);
-   ok=True
-   try:
-    data
-   except:
-    print("No data - Die")
-    sys.exit(1) #die, no data
-  except socket.timeout as msg:
-   print("Connection timeout");
-   sys.exit(1) #die
- 
- # PARSE RESPONSE (start position 56, end position 60)
- totalpower=0 
- i=pfin-pini
- a=0
- while a<=i:
-  p1=56+(a*4)
-  p2=60+(a*4)
-  response=twosComplement_hex(str(''.join(hex(ord(chr(x)))[2:].zfill(2) for x in bytearray(data))+'  '+re.sub('[^\x20-\x7f]', '', ''))[p1:p2])
-  hexpos=str("0x") + str(hex(a+pini)[2:].zfill(4)).upper()
-  with open("./DYRealTime.txt") as txtfile:
-   parameters=json.loads(txtfile.read())
-  for parameter in parameters:
-   for item in parameter["items"]:
-     title=item["titleEN"]
-     ratio=item["ratio"]
-     unit=item["unit"]
-     for register in item["registers"]:
-      if register==hexpos and chunks!=-1:
-       #print(hexpos+"-"+title+":"+str(response*ratio)+unit)
-       if title.find("Temperature")!=-1: 
-        response=round(response*ratio-100,2)
-       else: 	
-        response=round(response*ratio,2)
-       output=output+"\""+ title + "(" + unit + ")" + "\":" + str(response)+","
-       if hexpos=='0x00BA': totalpower+=response*ratio;
-       if hexpos=='0x00BB': totalpower+=response*ratio; 
-  a+=1
- pini=150
- pfin=195
- chunks+=1  
-output=output[:-1]+"}"
-if mqtt==1:
- # Initialise MQTT if configured
- client=paho.Client("inverter")
- if mqtt_username!="":
-  client.tls_set()  # <--- even without arguments
-  client.username_pw_set(username=mqtt_username, password=mqtt_passwd)
- client.connect(mqtt_server, mqtt_port)
- client.publish(mqtt_topic,totalpower)
- client.publish(mqtt_topic+"/attributes",output)
- print("Ok")
+# Initialize variables
+if output_to_json:
+    output = '{'  # initialize json output
 else:
- print(output)
+    output = ''  # initialize for vzlogger
+    voltagedc1 = 0
+    voltagedc2 = 0
+
+# register start (other possible values 0x00/0x27 0x3b/0x36 0x96/0x2d)
+reg_ini = int('0x56', 16)
+reg_len = int('0x20', 16)  # register length
+
+
+def dataextract(data):
+    length, controlcode, serialin, serialout, logger_sn = struct.unpack_from(
+        '<xHHBBI', data, offset=0)
+    # like b'020000000000000000000000000000010300000027d005'
+    datafield = data[11:11+length]
+    businesskey, msg_reg_ini, msg_reg_len, crc = struct.unpack(
+        '>HHHH', datafield[-8:])  # 010300000027d005
+    if msg_details_output:
+        print("Received new message. Length: %s" % length)
+        print("controlcode: 0x%X" % controlcode)
+        print("serialin: %s serialout: %s" % (serialin, serialout))
+        print("logger_sn: %s" % logger_sn)
+        print("businessfield: 0x%X reg_ini: %s reg_len: %s crc: 0x%X" %
+              (businesskey, msg_reg_ini, msg_reg_len, crc))
+    return datafield, length
+
+
+def messagebuild(reg_ini, reg_len):
+    msgStart = b'\xA5'  # start
+    length = b'\x17\x00'  # datalength
+    controlcode = b'\x10\x45'  # controlCode
+    message_sn = b'\x00\x00'  # serial
+    logger_sn_reverse = struct.pack('<I', int(logger_sn))
+    # com.igen.localmode.dy.instruction.send.SendDataField
+    datafield = unhexlify('020000000000000000000000000000')
+
+    businessfield = b'\x01\x03' + \
+        reg_ini.to_bytes(2, byteorder='big') + \
+        reg_len.to_bytes(2, byteorder='big')  # sin CRC16MODBUS
+    crc = libscrc.modbus(businessfield).to_bytes(
+        2, byteorder='little')  # CRC16modbus
+
+    frame_bytes = length + controlcode + message_sn + \
+        logger_sn_reverse + datafield + businessfield + crc
+
+    checksum = 0
+    for i in range(0, len(frame_bytes), 1):
+        checksum += frame_bytes[i] & 255
+    checksum = (checksum & 255).to_bytes(1, byteorder='big')
+    msgEnd = b'\x15'
+    return msgStart + frame_bytes + checksum + msgEnd
+
+
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(10)  # to fail sooner than 15 sec period of vzlogger exec
+except OSError as msg:
+    s = None
+    print('could not open socket')
+    print(msg)
+    sys.exit(1)
+try:
+    s.connect((logger_ip, logger_port))
+except OSError as msg:
+    s.close()
+    print('could not connect to host: %s, port: %s' % (logger_ip, logger_port))
+    print(msg)
+    sys.exit(1)
+
+sdata = messagebuild(reg_ini, reg_len)
+with s:
+    s.sendall(sdata)
+    data = s.recv(1024)
+    if not data:
+        print('could not receive data')
+        sys.exit(1)
+
+if msg_details_output:
+    print('->Data sent: %s' % hexlify(sdata))
+
+if msg_details_output:
+    print('<-Data recieved: %s' % hexlify(data))
+
+rdata = dataextract(data)
+
+offset = 17  # ignore timestamp etc.
+
+while offset < rdata[1]:
+
+    hexpos = '0x%0*X' % (4, reg_ini + (offset - 17) // 2)
+
+    for parameter in parameters:
+        for item in parameter["items"]:
+            title = item["titleEN"]
+            ratio = item["ratio"]
+            unit = item["unit"]
+            for register in item["registers"]:
+                if register == hexpos:
+                    match item['interactionType']:
+                        case 1:
+                            match item['parserRule']:
+                                case 1 | 2 | 3 | 4: result = round(struct.unpack_from('>H', rdata[0], offset=offset)[0] * ratio, 2)
+                                case 5:  # leave as is
+                                    result = str(rdata[0][offset:offset+2])
+                        case 2:
+                            for optionRange in item['optionRanges']:
+                                if optionRange['key'] == struct.unpack_from('>H', rdata[0], offset=offset)[0]:
+                                    try:
+                                        result = optionRange['valueEN']
+                                    except KeyError:
+                                        result = optionRange['value']
+                    match output_to_json:
+                        case 1:
+                            output = output+"\"" + title + \
+                                "(" + unit + ")" + \
+                                "\":" + str(result)+","
+                        case 0:
+                            match hexpos:  # prepare output for vzlogger
+                                case '0x0056':
+                                    output += 'powerac ' + \
+                                        str(result) + '\n'
+                                case '0x005A':
+                                    output += 'temp ' + \
+                                        str(result/10-10) + '\n'
+                                case '0x006D':
+                                    voltagedc1 = result
+                                case '0x006E':
+                                    output += 'powerdc1 ' + \
+                                        str(round(voltagedc1*result, 2)) + '\n'
+                                case '0x006F':
+                                    voltagedc2 = result
+                                case '0x0070':
+                                    output += 'powerdc2 ' + \
+                                        str(round(voltagedc2*result, 2)) + '\n'
+
+                    if msg_details_output:
+                        print(hexpos + "-" + title + ":" + str(result) + unit)
+    offset += 2  # read every second byte
+if output_to_json:
+    output = output[:-1]+"}"
+
+print(output)
