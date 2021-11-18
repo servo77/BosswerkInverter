@@ -24,7 +24,7 @@ tar -zxvf Python-3.10.0.tgz
 cd Python-3.10.0
 ./configure --enable-optimizations
 sudo make altinstall
-cd /usr/bin && sudo ln -s /usr/local/bin/python3.10 python3
+cd /usr/local/bin && sudo ln -s /usr/local/bin/python3.10 python3
 ```
 2. Install libscrc module
 ```
