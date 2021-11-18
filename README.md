@@ -64,6 +64,9 @@ sudo systemctl restart vzlogger
    
 9.  If everything was fine, you'll get results in less then a minute
 
+<img src=https://github.com/servo77/BosswerkInverter/blob/main/volkszaehler_example.png>
+
+
 # Run
 
 ```
