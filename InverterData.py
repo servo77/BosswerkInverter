@@ -154,8 +154,9 @@ while offset < rdata[1]:
                                     output += 'powerac ' + \
                                         str(result) + '\n'
                                 case '0x005A':
-                                    output += 'temp ' + \
-                                        str(result/10-10) + '\n'
+                                    if result != 0:
+                                        output += 'temp ' + \
+                                            str(result/10-10) + '\n'
                                 case '0x006D':
                                     voltagedc1 = result
                                 case '0x006E':
