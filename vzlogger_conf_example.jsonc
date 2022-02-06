@@ -7,7 +7,7 @@
     // arbitrary text and whitespaces are allowed, see 'scanf()'
     // at least $v has to be used
     // $i => identifier, $v => value, $t => timestamp
-    "interval": 15,
+    "interval": 60,
     "channels": [
         {
             "identifier": "powerac",
