@@ -11,19 +11,23 @@
     "channels": [
         {
             "identifier": "powerac",
+            "middleware": "http://localhost/middleware.php",
             "uuid": "<replace with your uuid>"
         },
         {
             "identifier": "powerdc1",
+            "middleware": "http://localhost/middleware.php",
             "uuid": "<replace with your uuid>"
         },
         {
             "identifier": "powerdc2",
+            "middleware": "http://localhost/middleware.php",
             "uuid": "<replace with your uuid>"
         },
         {
             "identifier": "temp",
+            "middleware": "http://localhost/middleware.php",
             "uuid": "<replace with your uuid>"
         }
-    ]
-}
+    ] // channels
+} // meter
