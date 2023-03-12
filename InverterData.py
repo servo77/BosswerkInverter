@@ -7,6 +7,7 @@ import os
 import configparser
 from binascii import *
 
+# Note: please call with full path, like 'python3 /full/path/to/InverterData.py'
 os.chdir(os.path.dirname(sys.argv[0]))
 
 # Read config
@@ -90,15 +91,15 @@ try:
     s.settimeout(10)  # to fail sooner than 15 sec period of vzlogger exec
 except OSError as msg:
     s = None
-    print('could not open socket')
-    print(msg)
+    print('BosswerkInverter: could not open socket', file=sys.stderr)
+    print(msg, file=sys.stderr)
     sys.exit(1)
 try:
     s.connect((logger_ip, logger_port))
 except OSError as msg:
     s.close()
-    print('could not connect to host: %s, port: %s' % (logger_ip, logger_port))
-    print(msg)
+    print('BosswerkInverter: could not connect to host: %s, port: %s' % (logger_ip, logger_port), file=sys.stderr)
+    print(msg, file=sys.stderr)
     sys.exit(1)
 
 sdata = messagebuild(reg_ini, reg_len)
@@ -106,7 +107,7 @@ with s:
     s.sendall(sdata)
     data = s.recv(1024)
     if not data:
-        print('could not receive data')
+        print(stderr, 'BosswerkInverter: could not receive data')
         sys.exit(1)
 
 if msg_details_output:
